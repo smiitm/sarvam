@@ -81,8 +81,40 @@ RECORDS = [
 ]
 
 
+def as_text(r):
+    """Printed layout of a record, as it would appear on paper."""
+    p = r["patient"]
+    lines = [f"{r['doctor'].upper()} - CITY CARE CLINIC", r["record_type"].replace("_", " ").upper(), "",
+             f"Patient: {p['name']}      Age: {p['age']}", f"Date of visit: {r['visit_date']}",
+             f"Doctor: {r['doctor']}", f"Known allergies: {', '.join(p['allergies']) or 'None'}",
+             f"Diagnosis: {r['diagnosis']}", ""]
+    if r["medicines"]:
+        lines.append("Rx:")
+        lines += [f"  {i}. {m['name']} {m['dose']} - {m['frequency']} - {m['duration_days']} days"
+                  for i, m in enumerate(r["medicines"], 1)]
+    if r["lab_values"]:
+        lines.append("Lab results:")
+        lines += [f"  {l['test']}: {l['value']} {l['unit']}  (ref {l['ref_low']}-{l['ref_high']})"
+                  for l in r["lab_values"]]
+    if r["follow_up"]:
+        lines += ["", f"Follow-up: {r['follow_up']['instructions']} by {r['follow_up']['due_date']}"]
+    return "\n".join(lines)
+
+
+def render(text, path):
+    """Draw the record onto a white page and save as JPG or PDF (Pillow picks by extension)."""
+    from PIL import Image, ImageDraw, ImageFont
+    try:
+        font = ImageFont.truetype("arial.ttf", 28)
+    except OSError:
+        font = ImageFont.load_default(size=28)
+    img = Image.new("RGB", (1240, 1000), "white")
+    ImageDraw.Draw(img).multiline_text((60, 60), text, fill="black", font=font, spacing=14)
+    img.save(path)
+
+
 def generate(folder):
-    """Write one placeholder scan (.jpg/.pdf) per record plus its extraction JSON."""
+    """Write one scan (.jpg/.pdf) per record plus its ground-truth JSON (used by simulated mode)."""
     folder = Path(folder)
     (folder / "_extracted").mkdir(parents=True, exist_ok=True)
     paths = []
@@ -90,7 +122,7 @@ def generate(folder):
         ext = ".jpg" if r["record_type"] == "prescription" else ".pdf"
         stem = f"{i:02d}_{r['patient']['name'].replace(' ', '_').lower()}_{r['record_type']}"
         scan = folder / (stem + ext)
-        scan.write_bytes(b"placeholder scan - synthetic record\n")
+        render(as_text(r), scan)
         (folder / "_extracted" / (stem + ".json")).write_text(json.dumps(r, indent=2))
         paths.append(scan)
     return paths
